@@ -1,0 +1,15 @@
+services:
+  overdrive-fetch:
+    build: .
+    image: chpl/overdrive-fetch:latest
+    container_name: overdrive-fetch
+    environment:
+      CLIENT_KEY: "${CLIENT_KEY}"
+      CLIENT_SECRET: "${CLIENT_SECRET}"
+      WEBSITE_ID: "${WEBSITE_ID:-47}"
+      USER_AGENT: >-
+        ${USER_AGENT:-CHPL-OverDriveClient/1.0 (Cincinnati & Hamilton County Public Library; contact: ray.voelker@chpl.org)}
+      OUTPUT_DIR: "/data"
+    volumes:
+      - ./out:/data
+    restart: on-failure

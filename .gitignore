@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Environment and secrets
+.env
+
+# Local output
+out/
+data/
+*.pkl
+*.pkl.gz
+
+# Docker
+*.log
+*.pid
+
+# IDE / Editor
+.vscode/
+.idea/
