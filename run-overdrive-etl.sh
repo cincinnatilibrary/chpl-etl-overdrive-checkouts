@@ -1,4 +1,10 @@
 #!/bin/bash
+
+# NOTE: to keep the systemd instance and runtime directory alive when
+#       logged out, you need to enable linger with the below command
+#       for your username ...
+# sudo loginctl enable-linger USER_NAME_HERE
+
 set -euo pipefail
 
 export PATH=/usr/local/bin:/usr/bin:/bin
