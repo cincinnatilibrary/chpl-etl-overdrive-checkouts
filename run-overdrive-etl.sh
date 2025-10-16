@@ -1,6 +1,10 @@
 #!/bin/bash
 set -euo pipefail
 
+export PATH=/usr/local/bin:/usr/bin:/bin
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
+
 # Resolve the directory of this script
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
