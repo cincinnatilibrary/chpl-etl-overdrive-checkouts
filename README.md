@@ -98,6 +98,48 @@ with open("out/overdrive_20251015_130000/response_1697412280.pkl", "rb") as f:
 
 ---
 
+## Testing
+
+The repo has a pytest suite that exercises both `overdrive_client.py` and
+`app.py` against an `httpx.MockTransport`-based fake OverDrive API — no real
+OverDrive credentials or network access required.
+
+### Fixtures are local-only
+
+Captured prod fixtures contain patron-linked `userId` values, so
+`tests/fixtures/` is in `.gitignore` and never committed. Fresh clones must
+populate the fixture locally before the fixture-backed tests can run —
+tests that depend on a fixture call `pytest.skip(...)` cleanly when absent.
+
+### 1. One-time setup
+
+```bash
+uv sync                            # install pytest + httpx (dev deps)
+ai-vault unlock                    # in your tmux session (vault-gated SSH)
+make capture-fixture RUN=overdrive_YYYYMMDD_HHMMSS
+# or run the script with no args to list recent prod runs:
+#   ./scripts/capture-fixture.sh
+```
+
+### 2. Run the tests
+
+```bash
+make test                          # or: uv run pytest
+```
+
+---
+
+## Makefile targets
+
+Convenience wrappers — see `make help` for the full list:
+
+- `make test` — run the pytest suite.
+- `make build` — build the container image locally (`localhost/chpl/overdrive-fetch:latest`).
+- `make capture-fixture RUN=<run-dir>` — copy a prod run dir from
+  `ils-reports` into `tests/fixtures/` (LOCAL-ONLY, never committed).
+
+---
+
 ## Cleanup
 
 Remove all containers and build cache:
