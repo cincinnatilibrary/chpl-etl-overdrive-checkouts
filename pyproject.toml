@@ -1,0 +1,17 @@
+[project]
+name = "chpl-etl-overdrive-checkouts"
+version = "0.1.0"
+description = "CHPL OverDrive checkouts ETL — extract stage (raw JSON pages + manifest)"
+requires-python = ">=3.11"
+dependencies = [
+    "httpx>=0.28.1,<1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v"
