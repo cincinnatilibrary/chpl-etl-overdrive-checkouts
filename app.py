@@ -1,10 +1,10 @@
 import os
-import time
-import pickle
+import json
 import datetime
 from pathlib import Path
 
 from overdrive_client import OverDriveRESTClient  # your local module
+
 
 def main():
     # --- env vars ---
@@ -40,28 +40,58 @@ def main():
 
     # --- timestamped output dir under /data ---
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_dir = base_output_dir / f"overdrive_{timestamp}"
+    run_id = f"overdrive_{timestamp}"
+    output_dir = base_output_dir / run_id
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    started_at = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
+
     # --- request loop ---
+    # Each page is written as raw response bytes to page_NNNN.json. A run.json
+    # manifest is written ONLY after every page succeeds — partial/crashed runs
+    # leave a manifest-less directory that downstream loaders skip.
     next_url = "checkouts"
-    file_names = []
+    page_files = []
+    page_index = 0
 
     while next_url:
+        page_index += 1
         response = client.request("GET", next_url, params=params)
+        response.raise_for_status()
 
-        file_path = output_dir / f"response_{int(time.time())}.pkl"
-        file_names.append(str(file_path))
+        file_name = f"page_{page_index:04d}.json"
+        file_path = output_dir / file_name
 
-        with open(file_path, "wb") as f:
-            pickle.dump(response, f)
+        # Write raw response bytes — byte-faithful raw landing, no re-parse.
+        file_path.write_bytes(response.content)
+        page_files.append(file_name)
 
         print(f"Saved: {file_path}")
 
         # follow pagination
         next_url = response.json().get("nextPageUrl")
 
-    print(f"Saved {len(file_names)} responses to '{output_dir}'")
+    finished_at = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
+
+    manifest = {
+        "run_id": run_id,
+        "source": "overdrive",
+        "stage": "extract",
+        "status": "completed",
+        "window_start": str(startDateUtc),
+        "window_end": str(endDateUtc),
+        "page_count": page_index,
+        "pages": page_files,
+        "started_at": started_at,
+        "finished_at": finished_at,
+    }
+    manifest_path = output_dir / "run.json"
+    with open(manifest_path, "w", encoding="utf-8") as f:
+        json.dump(manifest, f, indent=2, sort_keys=True)
+
+    print(f"Saved {page_index} pages to '{output_dir}'")
+    print(f"Manifest: {manifest_path}")
+
 
 if __name__ == "__main__":
     main()
