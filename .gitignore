@@ -14,6 +14,11 @@ data/
 *.pkl
 *.pkl.gz
 
+# Test fixtures — captured from prod, contain patron-linked userIds
+# (decision 2026-05-18: kept local-only, never committed). Set up via
+# scripts/capture-fixture.sh; tests skip if absent.
+tests/fixtures/
+
 # Docker
 *.log
 *.pid
