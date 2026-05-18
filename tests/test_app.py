@@ -122,3 +122,31 @@ def test_main_does_not_write_manifest_on_mid_run_failure(monkeypatch, app_env, c
     subdirs = [p for p in app_env.iterdir() if p.is_dir() and p.name.startswith("overdrive_")]
     assert len(subdirs) == 1
     assert not (subdirs[0] / "run.json").exists()
+
+
+def test_main_reads_from_fixture_dir_when_env_set(monkeypatch, tmp_path, canonical_run_dir):
+    """When FIXTURE_DIR is set, app.main() reads pages from there instead of calling the API.
+
+    No CLIENT_KEY/SECRET needed in this mode (and a sentinel value should not trigger
+    any HTTP call). Output mirrors the fixture's page count and produces a manifest.
+    """
+    monkeypatch.setenv("FIXTURE_DIR", str(canonical_run_dir))
+    monkeypatch.setenv("OUTPUT_DIR", str(tmp_path))
+    # Deliberately NOT setting CLIENT_KEY/SECRET — fixture mode should not require them.
+
+    app.main()
+
+    subdirs = [p for p in tmp_path.iterdir() if p.is_dir() and p.name.startswith("overdrive_")]
+    assert len(subdirs) == 1
+    run_dir = subdirs[0]
+
+    n_expected = len(list(canonical_run_dir.glob("page_*.json")))
+    pages = sorted(run_dir.glob("page_*.json"))
+    assert len(pages) == n_expected
+
+    manifest = json.loads((run_dir / "run.json").read_text())
+    assert manifest["status"] == "completed"
+    assert manifest["page_count"] == n_expected
+    # Source/stage stay the same; the only difference is the data path.
+    assert manifest["source"] == "overdrive"
+    assert manifest["stage"] == "extract"
