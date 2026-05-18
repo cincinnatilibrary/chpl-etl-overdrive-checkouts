@@ -7,6 +7,7 @@ page-file to serve based on the request URL.
 """
 import json
 from pathlib import Path
+from typing import Callable
 
 import httpx
 import pytest
@@ -24,7 +25,7 @@ def _page_index_from_url(url: httpx.URL, default: int = 1) -> int:
     return int(val) if val is not None else default
 
 
-def make_fake_overdrive_handler(run_dir: Path):
+def make_fake_overdrive_handler(run_dir: Path) -> Callable[[httpx.Request], httpx.Response]:
     """Build a request handler that serves `run_dir/page_NNNN.json` with pagination.
 
     `nextPageUrl` in each served page is rewritten to use the fake's
@@ -37,7 +38,7 @@ def make_fake_overdrive_handler(run_dir: Path):
 
     def handler(request: httpx.Request) -> httpx.Response:
         # OAuth token endpoint — return a stub
-        if request.url.path.endswith("/token"):
+        if request.url.path == "/token":
             return httpx.Response(
                 200,
                 json={"access_token": "fake-token", "token_type": "Bearer", "expires_in": 3600},
@@ -51,12 +52,13 @@ def make_fake_overdrive_handler(run_dir: Path):
         page_path = pages[page_idx - 1]
         body = json.loads(page_path.read_text())
 
-        # Rewrite nextPageUrl to the fake's pagination scheme
+        # Construct the response body with a rewritten nextPageUrl. Use dict(...) rather
+        # than mutating body in place — keeps fixture data immutable if a future
+        # optimization caches the parsed dict.
         if page_idx < len(pages):
-            # Preserve the base path; just change the query
-            body["nextPageUrl"] = f"checkouts?_page={page_idx + 1}"
+            body = dict(body, nextPageUrl=f"checkouts?_page={page_idx + 1}")
         else:
-            body["nextPageUrl"] = None
+            body = dict(body, nextPageUrl=None)
 
         return httpx.Response(200, json=body)
 
@@ -71,7 +73,13 @@ def fixtures_root():
 
 @pytest.fixture
 def canonical_run_dir(fixtures_root):
-    """Path to the first captured prod fixture (the canonical reference run)."""
+    """Path to the first captured prod fixture (oldest by name → oldest by timestamp,
+    since run dirs are named `overdrive_<YYYYMMDD_HHMMSS>`).
+
+    Oldest-as-canonical keeps test behavior stable as new fixtures accumulate.
+    Tests that need a *specific* run dir should request it directly, not via
+    this fixture.
+    """
     candidates = sorted(p for p in fixtures_root.glob("overdrive_*") if p.is_dir())
     if not candidates:
         pytest.skip(
