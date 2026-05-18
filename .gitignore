@@ -2,6 +2,8 @@
 __pycache__/
 *.pyc
 *.pyo
+.venv/
+.pytest_cache/
 
 # Environment and secrets
 .env
