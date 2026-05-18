@@ -1,9 +1,11 @@
 """Shared pytest fixtures for the OverDrive ETL test suite.
 
 The `fake_overdrive_api` fixture builds an httpx.MockTransport that serves
-captured OverDrive Reports API responses from a fixture directory. Pagination
-is wired up via the `nextPageUrl` field — the fake handler computes which
-page-file to serve based on the request URL.
+captured OverDrive Reports API responses from a fixture directory in sequence.
+Pagination is request-counter driven (not URL-encoded), because httpx's
+`params=` kwarg REPLACES the URL query string — encoding `?_page=N` into
+`nextPageUrl` would be stripped on the next call, causing infinite re-fetch
+of page 1.
 """
 import json
 from pathlib import Path
@@ -15,48 +17,48 @@ import pytest
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 
-def _page_index_from_url(url: httpx.URL, default: int = 1) -> int:
-    """Extract the page index from a fake-paginated URL.
-
-    The fake API encodes the next page index in the query string as
-    `?_page=N`. The first request (no `_page` param) is treated as page 1.
-    """
-    val = url.params.get("_page")
-    return int(val) if val is not None else default
-
-
 def make_fake_overdrive_handler(run_dir: Path) -> Callable[[httpx.Request], httpx.Response]:
-    """Build a request handler that serves `run_dir/page_NNNN.json` with pagination.
+    """Build a request handler that serves `run_dir/page_NNNN.json` in sequence.
 
-    `nextPageUrl` in each served page is rewritten to use the fake's
-    `?_page=N+1` scheme so the client follows pagination through the fixture.
+    Stateful: each non-token request advances an internal counter and returns the
+    next page. `nextPageUrl` is set to a non-empty sentinel for all but the last
+    page (its actual value is irrelevant — the client only checks truthiness via
+    `while next_url:` in app.py).
+
     The token endpoint (`/token`) is always answered with a stub access_token.
+    The state is per-handler-instance, so a fresh `make_fake_overdrive_handler`
+    call gives a fresh counter (no cross-test bleed when each test gets its own
+    `fake_overdrive_api` fixture).
     """
     pages = sorted(run_dir.glob("page_*.json"))
     if not pages:
         raise FileNotFoundError(f"no page_*.json files in {run_dir}")
 
+    # Closure-state: request counter (non-token requests only).
+    state = {"served": 0}
+    sentinel_next = "checkouts?continue=1"  # any non-empty string; content unused
+
     def handler(request: httpx.Request) -> httpx.Response:
-        # OAuth token endpoint — return a stub
+        # OAuth token endpoint — return a stub.
         if request.url.path == "/token":
             return httpx.Response(
                 200,
                 json={"access_token": "fake-token", "token_type": "Bearer", "expires_in": 3600},
             )
 
-        # Reports API — serve from fixture dir, rewriting nextPageUrl
-        page_idx = _page_index_from_url(request.url, default=1)
+        # Reports API — serve next fixture page in sequence.
+        state["served"] += 1
+        page_idx = state["served"]
         if page_idx > len(pages):
             return httpx.Response(404, json={"error": f"no page {page_idx}"})
 
-        page_path = pages[page_idx - 1]
-        body = json.loads(page_path.read_text())
+        body = json.loads(pages[page_idx - 1].read_text())
 
-        # Construct the response body with a rewritten nextPageUrl. Use dict(...) rather
-        # than mutating body in place — keeps fixture data immutable if a future
-        # optimization caches the parsed dict.
+        # Construct the response body with a rewritten nextPageUrl. Use dict(...)
+        # rather than mutating body in place — keeps fixture data immutable if a
+        # future optimization caches the parsed dict.
         if page_idx < len(pages):
-            body = dict(body, nextPageUrl=f"checkouts?_page={page_idx + 1}")
+            body = dict(body, nextPageUrl=sentinel_next)
         else:
             body = dict(body, nextPageUrl=None)
 
