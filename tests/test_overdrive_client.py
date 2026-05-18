@@ -50,7 +50,7 @@ def test_pagination_walks_all_fixture_pages(client_with_fake_api, canonical_run_
     assert pages_fetched == n_pages
 
 
-def test_transient_202_is_retried(monkeypatch):
+def test_transient_202_is_retried():
     """A 202 with short Retry-After is retried; we assert eventual success."""
     from itertools import count
     attempts = count(1)
