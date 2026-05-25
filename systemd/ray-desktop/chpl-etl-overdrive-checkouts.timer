@@ -2,7 +2,14 @@
 Description=Timer for chimpy-lake tenant: overdrive-checkouts
 
 [Timer]
-OnCalendar=*-*-* 06:00:00 America/New_York
+# Mirrors the documented OverDrive API "allotted time slot" window used by
+# the production scheduler on ils-reports (~/.config/systemd/user/overdrive-etl.timer).
+# OverDrive returns HTTP 400 {"message":"This API can only be called during
+# the allotted time slot."} outside this window. Single-fire-per-day OR fires
+# outside this window will silently fail with that 400. Stay inside the prod
+# window unless OverDrive documents a different one for this tenant.
+OnCalendar=*-*-* 07:05:00 UTC
+OnCalendar=*-*-* 18:05:00 UTC
 Persistent=true
 RandomizedDelaySec=300
 
