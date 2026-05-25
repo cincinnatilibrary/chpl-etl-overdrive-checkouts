@@ -9,9 +9,13 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "chimpy-lake",
     "pytest>=8",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-v"
+
+[tool.uv.sources]
+chimpy-lake = { path = "../chimpy-lake" }

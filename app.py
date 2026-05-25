@@ -4,6 +4,7 @@ import datetime
 from pathlib import Path
 
 from overdrive_client import OverDriveRESTClient  # your local module
+from chimpy_lake.telemetry import TelemetryClient
 
 
 def main():
@@ -47,60 +48,89 @@ def main():
     output_dir = base_output_dir / run_id
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    started_at = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
+    # --- telemetry setup (outside the run context; idempotent) ---
+    telemetry = TelemetryClient.from_env()
+    telemetry.register_source(
+        description="OverDrive checkouts extract (REST → run.json pages)",
+        slo_max_age_hours=26,
+    )
+    triggered_by = os.environ.get("CHPL_TRIGGERED_BY", "scheduled")
 
-    page_files = []
-    page_index = 0
+    with telemetry.run(triggered_by=triggered_by) as run:
+        started_at = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
 
-    if fixture_dir is not None:
-        # Fixture mode — copy pages from FIXTURE_DIR (no API calls).
-        # This is the local dev / CI path; production never sets FIXTURE_DIR.
-        fixture_pages = sorted(Path(fixture_dir).glob("page_*.json"))
-        if not fixture_pages:
-            raise FileNotFoundError(f"no page_*.json files in FIXTURE_DIR={fixture_dir}")
-        for src in fixture_pages:
-            page_index += 1
-            file_name = f"page_{page_index:04d}.json"
-            file_path = output_dir / file_name
-            file_path.write_bytes(src.read_bytes())
-            page_files.append(file_name)
-            print(f"Saved (from fixture): {file_path}")
-    else:
-        # Real-API mode — fetch + paginate.
-        next_url = "checkouts"
-        while next_url:
-            page_index += 1
-            response = client.request("GET", next_url, params=params)
-            response.raise_for_status()
+        page_files = []
+        page_index = 0
+        record_count = 0
 
-            file_name = f"page_{page_index:04d}.json"
-            file_path = output_dir / file_name
-            file_path.write_bytes(response.content)
-            page_files.append(file_name)
+        if fixture_dir is not None:
+            # Fixture mode — copy pages from FIXTURE_DIR (no API calls).
+            # This is the local dev / CI path; production never sets FIXTURE_DIR.
+            fixture_pages = sorted(Path(fixture_dir).glob("page_*.json"))
+            if not fixture_pages:
+                raise FileNotFoundError(f"no page_*.json files in FIXTURE_DIR={fixture_dir}")
+            for src in fixture_pages:
+                page_index += 1
+                file_name = f"page_{page_index:04d}.json"
+                file_path = output_dir / file_name
+                raw = src.read_bytes()
+                file_path.write_bytes(raw)
+                page_files.append(file_name)
+                # Count checkouts records from the page body (best-effort; 0 on parse failure).
+                try:
+                    record_count += len(json.loads(raw).get("checkouts", []))
+                except Exception:
+                    pass
+                print(f"Saved (from fixture): {file_path}")
+        else:
+            # Real-API mode — fetch + paginate.
+            next_url = "checkouts"
+            while next_url:
+                page_index += 1
+                response = client.request("GET", next_url, params=params)
+                response.raise_for_status()
 
-            print(f"Saved: {file_path}")
-            next_url = response.json().get("nextPageUrl")
+                file_name = f"page_{page_index:04d}.json"
+                file_path = output_dir / file_name
+                file_path.write_bytes(response.content)
+                page_files.append(file_name)
 
-    finished_at = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
+                # Count checkouts records from the page body (best-effort; 0 on parse failure).
+                try:
+                    record_count += len(response.json().get("checkouts", []))
+                except Exception:
+                    pass
 
-    manifest = {
-        "run_id": run_id,
-        "source": "overdrive",
-        "stage": "extract",
-        "status": "completed",
-        "window_start": str(startDateUtc),
-        "window_end": str(endDateUtc),
-        "page_count": page_index,
-        "pages": page_files,
-        "started_at": started_at,
-        "finished_at": finished_at,
-    }
-    manifest_path = output_dir / "run.json"
-    with open(manifest_path, "w", encoding="utf-8") as f:
-        json.dump(manifest, f, indent=2, sort_keys=True)
+                print(f"Saved: {file_path}")
+                next_url = response.json().get("nextPageUrl")
+
+        finished_at = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
+
+        # Set telemetry attributes from the actual results.
+        run.record_count = record_count
+        run.page_count = page_index
+
+        # CRITICAL: run.json write is INSIDE the with-block to preserve the atomicity
+        # invariant: a mid-run fetch exception leaves no manifest.
+        manifest = {
+            "run_id": run_id,
+            "source": "overdrive",
+            "stage": "extract",
+            "status": "completed",
+            "window_start": str(startDateUtc),
+            "window_end": str(endDateUtc),
+            "page_count": page_index,
+            "pages": page_files,
+            "started_at": started_at,
+            "finished_at": finished_at,
+        }
+        manifest_path = output_dir / "run.json"
+        with open(manifest_path, "w", encoding="utf-8") as f:
+            json.dump(manifest, f, indent=2, sort_keys=True)
 
     print(f"Saved {page_index} pages to '{output_dir}'")
     print(f"Manifest: {manifest_path}")
+    return 0
 
 
 if __name__ == "__main__":
