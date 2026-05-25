@@ -10,6 +10,8 @@ Wants=network-online.target
 
 [Container]
 Image=localhost/chpl/overdrive-fetch:latest
+# Tier-3 lifecycle: Exec= is appended to ENTRYPOINT, giving 'python app.py run'.
+Exec=run
 ContainerName=chpl-etl-overdrive-checkouts
 
 # Telemetry env. EnvironmentFile= provides URL/TOKEN/BUFFER (FQDN form);

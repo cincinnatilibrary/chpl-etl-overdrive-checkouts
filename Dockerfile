@@ -26,4 +26,4 @@ ENV OUTPUT_DIR=/data
 # to find it.
 ENV PYTHONPATH=/opt/chimpy-lake/src:/app
 
-CMD ["python", "app.py"]
+ENTRYPOINT ["python", "app.py"]
