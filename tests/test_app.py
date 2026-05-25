@@ -1,4 +1,4 @@
-"""Characterization tests for app.main().
+"""Characterization tests for app.run().
 
 We patch OverDriveRESTClient so the orchestration uses the fake API, point
 OUTPUT_DIR at a tmp dir, and assert the output shape (page_NNNN.json files
@@ -28,7 +28,7 @@ def patched_client(monkeypatch, fake_overdrive_api):
 
 @pytest.fixture
 def app_env(monkeypatch, tmp_path):
-    """Set the env vars app.main() expects, pointing OUTPUT_DIR at a tmp dir."""
+    """Set the env vars app.run() expects, pointing OUTPUT_DIR at a tmp dir."""
     monkeypatch.setenv("CLIENT_KEY", "fake_key")
     monkeypatch.setenv("CLIENT_SECRET", "fake_secret")
     monkeypatch.setenv("OUTPUT_DIR", str(tmp_path))
@@ -36,8 +36,8 @@ def app_env(monkeypatch, tmp_path):
 
 
 def test_main_writes_one_json_per_fixture_page(patched_client, app_env, canonical_run_dir):
-    """app.main() should produce one page_NNNN.json per fixture page + run.json manifest."""
-    app.main()
+    """app.run() should produce one page_NNNN.json per fixture page + run.json manifest."""
+    app.run()
 
     # There should be exactly one new overdrive_<ts>/ subdir under OUTPUT_DIR
     subdirs = [p for p in app_env.iterdir() if p.is_dir() and p.name.startswith("overdrive_")]
@@ -52,7 +52,7 @@ def test_main_writes_one_json_per_fixture_page(patched_client, app_env, canonica
 
 
 def test_main_manifest_has_expected_fields(patched_client, app_env, canonical_run_dir):
-    app.main()
+    app.run()
     run_dir = next(p for p in app_env.iterdir() if p.is_dir() and p.name.startswith("overdrive_"))
     manifest = json.loads((run_dir / "run.json").read_text())
     expected_keys = {
@@ -72,7 +72,7 @@ def test_main_manifest_has_expected_fields(patched_client, app_env, canonical_ru
 
 def test_main_writes_page_files_as_raw_bytes(patched_client, app_env):
     """The page files should be valid JSON (the orchestration writes response.content)."""
-    app.main()
+    app.run()
     run_dir = next(p for p in app_env.iterdir() if p.is_dir() and p.name.startswith("overdrive_"))
     for page in sorted(run_dir.glob("page_*.json")):
         body = json.loads(page.read_text())
@@ -116,7 +116,7 @@ def test_main_does_not_write_manifest_on_mid_run_failure(monkeypatch, app_env, c
     monkeypatch.setattr(overdrive_client.OverDriveRESTClient, "__init__", patched_init)
 
     with pytest.raises(httpx.HTTPStatusError):
-        app.main()
+        app.run()
 
     # The run dir was created and at least one page written, but NO run.json
     subdirs = [p for p in app_env.iterdir() if p.is_dir() and p.name.startswith("overdrive_")]
@@ -125,7 +125,7 @@ def test_main_does_not_write_manifest_on_mid_run_failure(monkeypatch, app_env, c
 
 
 def test_main_reads_from_fixture_dir_when_env_set(monkeypatch, tmp_path, canonical_run_dir):
-    """When FIXTURE_DIR is set, app.main() reads pages from there instead of calling the API.
+    """When FIXTURE_DIR is set, app.run() reads pages from there instead of calling the API.
 
     No CLIENT_KEY/SECRET needed in this mode (and a sentinel value should not trigger
     any HTTP call). Output mirrors the fixture's page count and produces a manifest.
@@ -134,7 +134,7 @@ def test_main_reads_from_fixture_dir_when_env_set(monkeypatch, tmp_path, canonic
     monkeypatch.setenv("OUTPUT_DIR", str(tmp_path))
     # Deliberately NOT setting CLIENT_KEY/SECRET — fixture mode should not require them.
 
-    app.main()
+    app.run()
 
     subdirs = [p for p in tmp_path.iterdir() if p.is_dir() and p.name.startswith("overdrive_")]
     assert len(subdirs) == 1
@@ -153,7 +153,7 @@ def test_main_reads_from_fixture_dir_when_env_set(monkeypatch, tmp_path, canonic
 
 
 def test_main_invokes_telemetry_client(monkeypatch, app_env, patched_client):
-    """app.main() must register the source and open a TelemetryClient.run() context.
+    """app.run() must register the source and open a TelemetryClient.run() context.
 
     The chimpy-lake SDK uses CHPL_TELEMETRY_TENANT for the source name
     (set on the client via from_env, NOT passed to run()). run() takes
@@ -194,9 +194,36 @@ def test_main_invokes_telemetry_client(monkeypatch, app_env, patched_client):
     monkeypatch.setattr("app.TelemetryClient", _SpyClient)
     monkeypatch.setenv("CHPL_TELEMETRY_TENANT", "overdrive-checkouts")
 
-    rc = app.main()
+    rc = app.run()
     assert rc == 0
     assert len(registered) == 1, "register_source must be called once"
     assert len(triggers) == 1, "run() must be called exactly once"
     # record_count was set inside the with-block:
     assert record_counts_set and record_counts_set[0] is not None
+
+
+def test_run_honors_chpl_dry_run(monkeypatch, patched_client, app_env):
+    """When CHPL_DRY_RUN=1, run() fetches normally but skips all disk writes.
+
+    Verifies the spec §6 contract: API call is OK (read-only), JSON pages
+    are NOT written, run.json manifest is NOT written. Telemetry row
+    recording is not asserted here (autouse disable_telemetry fixture
+    makes the client a no-op for unit tests); verified at the integration
+    layer by B2 smoke + the conformance suite.
+    """
+    import app
+
+    monkeypatch.setenv("CHPL_DRY_RUN", "1")
+
+    exit_code = app.run()
+    assert exit_code == 0
+
+    # The timestamped run dir is created (mkdir is unconditional), but it
+    # must contain no page_*.json files and no run.json.
+    subdirs = [p for p in app_env.iterdir() if p.is_dir() and p.name.startswith("overdrive_")]
+    assert len(subdirs) == 1, f"expected one run dir, found: {subdirs}"
+    run_dir = subdirs[0]
+
+    pages = list(run_dir.glob("page_*.json"))
+    assert pages == [], f"dry-run wrote page files; expected none, got {pages}"
+    assert not (run_dir / "run.json").exists(), "dry-run wrote run.json; expected skip"

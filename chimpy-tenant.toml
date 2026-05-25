@@ -1,4 +1,4 @@
-# chpl-etl-overdrive-checkouts — chimpy-lake tenant manifest (Tier 2).
+# chpl-etl-overdrive-checkouts — chimpy-lake tenant manifest (Tier 3).
 #
 # Future rename note: this tenant becomes 'cl-extract-overdrive-checkouts'
 # at chimpy-lake S4a (the pilot rename; this repo is the lower-volume
@@ -28,3 +28,7 @@ required_env = ["CLIENT_KEY", "CLIENT_SECRET", "WEBSITE_ID", "USER_AGENT"]
 [telemetry]
 sources = ["overdrive-checkouts"]
 emit_runs = true
+
+[lifecycle]
+entrypoint = ["python", "app.py"]
+subcommands = ["run", "status", "dry-run", "migrate"]

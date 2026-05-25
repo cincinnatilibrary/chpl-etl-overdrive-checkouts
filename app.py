@@ -1,3 +1,4 @@
+import sys
 import os
 import json
 import datetime
@@ -7,7 +8,7 @@ from overdrive_client import OverDriveRESTClient  # your local module
 from chimpy_lake.telemetry import TelemetryClient
 
 
-def main():
+def run(args=None) -> int:
     # --- env vars ---
     fixture_dir = os.environ.get("FIXTURE_DIR")
     base_output_dir = Path(os.environ.get("OUTPUT_DIR", "/data"))
@@ -74,14 +75,16 @@ def main():
                 file_name = f"page_{page_index:04d}.json"
                 file_path = output_dir / file_name
                 raw = src.read_bytes()
-                file_path.write_bytes(raw)
+                if not os.environ.get("CHPL_DRY_RUN"):
+                    file_path.write_bytes(raw)
                 page_files.append(file_name)
                 # Count checkouts records from the page body (best-effort; 0 on parse failure).
                 try:
                     record_count += len(json.loads(raw).get("checkouts", []))
                 except Exception:
                     pass
-                print(f"Saved (from fixture): {file_path}")
+                if not os.environ.get("CHPL_DRY_RUN"):
+                    print(f"Saved (from fixture): {file_path}")
         else:
             # Real-API mode — fetch + paginate.
             next_url = "checkouts"
@@ -92,7 +95,8 @@ def main():
 
                 file_name = f"page_{page_index:04d}.json"
                 file_path = output_dir / file_name
-                file_path.write_bytes(response.content)
+                if not os.environ.get("CHPL_DRY_RUN"):
+                    file_path.write_bytes(response.content)
                 page_files.append(file_name)
 
                 # Count checkouts records from the page body (best-effort; 0 on parse failure).
@@ -101,7 +105,8 @@ def main():
                 except Exception:
                     pass
 
-                print(f"Saved: {file_path}")
+                if not os.environ.get("CHPL_DRY_RUN"):
+                    print(f"Saved: {file_path}")
                 next_url = response.json().get("nextPageUrl")
 
         finished_at = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
@@ -109,6 +114,15 @@ def main():
         # Set telemetry attributes from the actual results.
         run.record_count = record_count
         run.page_count = page_index
+
+        if os.environ.get("CHPL_DRY_RUN"):
+            print(
+                f"[dry-run] fetched {page_index} pages from OverDrive; "
+                f"counted {record_count} records; "
+                f"skipped page writes and run.json manifest",
+                file=sys.stderr,
+            )
+            return 0
 
         # CRITICAL: run.json write is INSIDE the with-block to preserve the atomicity
         # invariant: a mid-run fetch exception leaves no manifest.
@@ -128,10 +142,12 @@ def main():
         with open(manifest_path, "w", encoding="utf-8") as f:
             json.dump(manifest, f, indent=2, sort_keys=True)
 
-    print(f"Saved {page_index} pages to '{output_dir}'")
-    print(f"Manifest: {manifest_path}")
+        print(f"Saved {page_index} pages to '{output_dir}'")
+        print(f"Manifest: {manifest_path}")
+
     return 0
 
 
 if __name__ == "__main__":
-    main()
+    from chimpy_lake.lifecycle import LifecycleApp
+    LifecycleApp(run=run).main()
