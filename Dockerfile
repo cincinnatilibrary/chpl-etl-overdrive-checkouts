@@ -21,4 +21,9 @@ VOLUME ["/data"]
 # Default output dir inside the container (can override via env)
 ENV OUTPUT_DIR=/data
 
+# chimpy_lake is mounted into /opt/chimpy-lake/src at runtime via Volume=
+# in the Quadlet (mirrors circ-trans pattern); we just need PYTHONPATH
+# to find it.
+ENV PYTHONPATH=/opt/chimpy-lake/src:/app
+
 CMD ["python", "app.py"]
