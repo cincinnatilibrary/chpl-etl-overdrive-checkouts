@@ -1,4 +1,4 @@
-# chpl-etl-overdrive-checkouts — chimpy-lake tenant manifest (Tier 1).
+# chpl-etl-overdrive-checkouts — chimpy-lake tenant manifest (Tier 2).
 #
 # Future rename note: this tenant becomes 'cl-extract-overdrive-checkouts'
 # at chimpy-lake S4a (the pilot rename; this repo is the lower-volume
@@ -11,3 +11,13 @@ name = "overdrive-checkouts"
 kind = "extract"
 schema = "overdrive"
 image = "ghcr.io/cincinnatilibrary/chpl-etl-overdrive-checkouts"
+image_tag = "latest"
+
+[runtime]
+default_schedule = "OnCalendar=*-*-* 06:00:00 America/New_York"
+runtime_max_sec = 3600
+required_env = ["CLIENT_KEY", "CLIENT_SECRET", "WEBSITE_ID", "USER_AGENT"]
+
+[telemetry]
+sources = ["overdrive-checkouts"]
+emit_runs = true
