@@ -14,6 +14,16 @@ from typing import Callable
 import httpx
 import pytest
 
+
+@pytest.fixture(autouse=True)
+def disable_telemetry(monkeypatch):
+    """Ensure tests never touch the real telemetry hub.
+
+    TelemetryClient.from_env() respects CHPL_TELEMETRY_DISABLED=1 and
+    returns a no-op client (matches circ-trans conftest pattern).
+    """
+    monkeypatch.setenv("CHPL_TELEMETRY_DISABLED", "1")
+
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 

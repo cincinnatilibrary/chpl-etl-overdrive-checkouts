@@ -150,3 +150,53 @@ def test_main_reads_from_fixture_dir_when_env_set(monkeypatch, tmp_path, canonic
     # Source/stage stay the same; the only difference is the data path.
     assert manifest["source"] == "overdrive"
     assert manifest["stage"] == "extract"
+
+
+def test_main_invokes_telemetry_client(monkeypatch, app_env, patched_client):
+    """app.main() must register the source and open a TelemetryClient.run() context.
+
+    The chimpy-lake SDK uses CHPL_TELEMETRY_TENANT for the source name
+    (set on the client via from_env, NOT passed to run()). run() takes
+    `triggered_by` as a kwarg. The context object's record_count /
+    page_count attributes are settable.
+    """
+    triggers: list[str] = []
+    registered: list[str] = []
+    record_counts_set: list[int] = []
+
+    class _SpyRun:
+        run_id = "test-run-id"
+        record_count = None
+        page_count = None
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            record_counts_set.append(self.record_count)
+            return False
+
+    class _SpyClient:
+        tenant = "overdrive-checkouts"  # would come from CHPL_TELEMETRY_TENANT in real from_env
+
+        @classmethod
+        def from_env(cls):
+            return cls()
+
+        def register_source(self, *, description, slo_max_age_hours=None):
+            registered.append(description)
+
+        def run(self, *, triggered_by, **kw):
+            triggers.append(triggered_by)
+            return _SpyRun()
+
+    # app.py does `from chimpy_lake.telemetry import TelemetryClient`, so patch at app module level
+    monkeypatch.setattr("app.TelemetryClient", _SpyClient)
+    monkeypatch.setenv("CHPL_TELEMETRY_TENANT", "overdrive-checkouts")
+
+    rc = app.main()
+    assert rc == 0
+    assert len(registered) == 1, "register_source must be called once"
+    assert len(triggers) == 1, "run() must be called exactly once"
+    # record_count was set inside the with-block:
+    assert record_counts_set and record_counts_set[0] is not None
