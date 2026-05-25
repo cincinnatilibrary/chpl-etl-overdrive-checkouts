@@ -21,6 +21,10 @@ ContainerName=chpl-etl-overdrive-checkouts
 # env var in the current SDK; the client reads only CHPL_TELEMETRY_TENANT.)
 EnvironmentFile=%h/.config/chpl-datalake/telemetry.env
 Environment=CHPL_TELEMETRY_TENANT=overdrive-checkouts
+# CHPL_TRIGGERED_BY must start with "timer:" — the tenant_health view filters
+# WHERE triggered_by LIKE 'timer:%', so without this the run would be inserted
+# into _platform.runs but never appear in the chimpy-lake status rollup.
+Environment=CHPL_TRIGGERED_BY=timer:chpl-etl-overdrive-checkouts.timer
 
 # OverDrive API creds (NOT in telemetry.env — separate concerns).
 EnvironmentFile=%h/chpl-etl-overdrive-checkouts/.env
@@ -28,6 +32,10 @@ EnvironmentFile=%h/chpl-etl-overdrive-checkouts/.env
 # Mount chimpy_lake source so PYTHONPATH resolves at runtime.
 Volume=%h/chimpy-lake/src:/opt/chimpy-lake/src:ro,Z
 Volume=%h/chpl-etl-overdrive-checkouts/out:/data:Z
+# Telemetry buffer — host-side SQLite that the chimpy-lake drainer flushes
+# to the live hub. Without this mount, SDK writes to the container-local
+# path silently and the runs never reach the buffer for draining.
+Volume=/var/lib/chpl-datalake:/var/lib/chpl-datalake:Z
 
 Network=host
 
