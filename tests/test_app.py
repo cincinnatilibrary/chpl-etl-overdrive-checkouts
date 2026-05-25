@@ -206,8 +206,10 @@ def test_run_honors_chpl_dry_run(monkeypatch, patched_client, app_env):
     """When CHPL_DRY_RUN=1, run() fetches normally but skips all disk writes.
 
     Verifies the spec §6 contract: API call is OK (read-only), JSON pages
-    are NOT written, run.json manifest is NOT written, telemetry row still
-    records (with real record_count from the fetch).
+    are NOT written, run.json manifest is NOT written. Telemetry row
+    recording is not asserted here (autouse disable_telemetry fixture
+    makes the client a no-op for unit tests); verified at the integration
+    layer by B2 smoke + the conformance suite.
     """
     import app
 
