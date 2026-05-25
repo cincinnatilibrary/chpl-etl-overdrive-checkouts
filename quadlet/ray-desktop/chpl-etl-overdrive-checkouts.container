@@ -1,0 +1,39 @@
+# chpl-etl-overdrive-checkouts — OverDrive checkouts extract.
+#
+# First-ever Quadlet for this tenant (S2b). Previously fired via the
+# external run-overdrive-etl.sh cron wrapper.
+
+[Unit]
+Description=chimpy-lake tenant: overdrive-checkouts (extract)
+After=network-online.target chpl-datalake-postgres.service
+Wants=network-online.target
+
+[Container]
+Image=localhost/chpl/overdrive-fetch:latest
+ContainerName=chpl-etl-overdrive-checkouts
+
+# Telemetry env. EnvironmentFile= provides URL/TOKEN/BUFFER (FQDN form);
+# explicit Environment= line sets the tenant/source name.
+# DELIBERATELY NO explicit Environment=CHPL_TELEMETRY_URL — that's the
+# short-name footgun from the circ-trans cutover.
+# Single source for this tenant: CHPL_TELEMETRY_TENANT becomes
+# _platform.runs.source via from_env(). (There is no CHPL_TELEMETRY_SOURCE
+# env var in the current SDK; the client reads only CHPL_TELEMETRY_TENANT.)
+EnvironmentFile=%h/.config/chpl-datalake/telemetry.env
+Environment=CHPL_TELEMETRY_TENANT=overdrive-checkouts
+
+# OverDrive API creds (NOT in telemetry.env — separate concerns).
+EnvironmentFile=%h/chpl-etl-overdrive-checkouts/.env
+
+# Mount chimpy_lake source so PYTHONPATH resolves at runtime.
+Volume=%h/chimpy-lake/src:/opt/chimpy-lake/src:ro,Z
+Volume=%h/chpl-etl-overdrive-checkouts/out:/data:Z
+
+Network=host
+
+[Service]
+Type=oneshot
+TimeoutStartSec=3600
+
+[Install]
+WantedBy=multi-user.target default.target
