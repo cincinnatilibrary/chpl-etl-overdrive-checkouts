@@ -14,7 +14,14 @@ image = "ghcr.io/cincinnatilibrary/chpl-etl-overdrive-checkouts"
 image_tag = "latest"
 
 [runtime]
-default_schedule = "OnCalendar=*-*-* 06:00:00 America/New_York"
+# Manifest declares the PRIMARY schedule per the spec convention at
+# ~/claude/docs/superpowers/specs/2026-05-23-chimpy-lake-architecture-design.md
+# § "Schedules: manifest vs. systemd unit". The live timer at
+# systemd/ray-desktop/chpl-etl-overdrive-checkouts.timer carries both the
+# morning fire (07:05 UTC, declared here) AND the afternoon fire
+# (18:05 UTC, kept in the timer unit only). Both inside OverDrive's
+# vendor "allotted time slot" window — see LLORE 110 § "2026-05-25 update".
+default_schedule = "OnCalendar=*-*-* 07:05:00 UTC"
 runtime_max_sec = 3600
 required_env = ["CLIENT_KEY", "CLIENT_SECRET", "WEBSITE_ID", "USER_AGENT"]
 
