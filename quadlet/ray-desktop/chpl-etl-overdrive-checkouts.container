@@ -33,6 +33,11 @@ EnvironmentFile=%h/chpl-etl-overdrive-checkouts/.env
 
 # Mount chimpy_lake source so PYTHONPATH resolves at runtime.
 Volume=%h/chimpy-lake/src:/opt/chimpy-lake/src:ro,Z
+# QUACK DuckDB extension (version-matched: container duckdb == host duckdb).
+# The ingestion-quality baseline READ runs quack_query() in-container, which
+# LOADs the quack extension; without this the read throws IOException and the
+# comparative checks degrade to absolute. Plain :ro, no relabel — host shares ~/.duckdb.
+Volume=%h/.duckdb/extensions:/root/.duckdb/extensions:ro
 Volume=%h/chpl-etl-overdrive-checkouts/out:/data:Z
 # Telemetry buffer — host-side SQLite that the chimpy-lake drainer flushes
 # to the live hub. Without this mount, SDK writes to the container-local
