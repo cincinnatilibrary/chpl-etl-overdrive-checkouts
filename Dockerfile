@@ -13,7 +13,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Your code
-COPY overdrive_client.py app.py ./
+COPY overdrive_client.py app.py chimpy-tenant.toml ./
 
 # Where results will be written
 VOLUME ["/data"]

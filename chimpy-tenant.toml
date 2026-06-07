@@ -32,3 +32,9 @@ emit_runs = true
 [lifecycle]
 entrypoint = ["python", "app.py"]
 subcommands = ["run", "status", "dry-run", "migrate"]
+
+[quality]
+table = "overdrive.checkouts"
+key_columns = ["checkout_id"]
+volume_min = 1
+volume_anomaly_pct = 80

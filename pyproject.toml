@@ -18,4 +18,4 @@ testpaths = ["tests"]
 addopts = "-v"
 
 [tool.uv.sources]
-chimpy-lake = { path = "../chimpy-lake" }
+chimpy-lake = { path = "../chimpy-lake", editable = true }

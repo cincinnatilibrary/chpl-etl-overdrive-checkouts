@@ -6,9 +6,12 @@ from pathlib import Path
 
 from overdrive_client import OverDriveRESTClient  # your local module
 from chimpy_lake.telemetry import TelemetryClient
+from chimpy_lake.quality import run_quality_checks_from_env
+
+_MANIFEST_PATH = Path(__file__).resolve().parent / "chimpy-tenant.toml"
 
 
-def run(args=None) -> int:
+def run(args=None, *, _quality_con=None) -> int:
     # --- env vars ---
     fixture_dir = os.environ.get("FIXTURE_DIR")
     base_output_dir = Path(os.environ.get("OUTPUT_DIR", "/data"))
@@ -145,7 +148,43 @@ def run(args=None) -> int:
         print(f"Saved {page_index} pages to '{output_dir}'")
         print(f"Manifest: {manifest_path}")
 
+        # Ingestion-quality checks (B5a): run after the manifest is written so we
+        # only validate a fully-successful extract.  This tenant is extract-only
+        # (no DuckDB load in app.py); _quality_con is an injected lake connection
+        # (test: in-memory DuckDB; production: opened from CHPL_LAKE_* env vars).
+        # run_quality_checks_from_env never raises — telemetry-never-fatal contract.
+        _run_quality_checks(telemetry, _quality_con, run_id=run.run_id,
+                            ingested_count=record_count)
+
     return 0
+
+
+def _run_quality_checks(telemetry, quality_con, *, run_id, ingested_count):
+    """Open a read-only lake connection from env if none provided, then run checks.
+
+    Fully degradable: if env vars are absent or the connection fails, quality
+    checks skip gracefully (run_quality_checks_from_env never raises).
+    """
+    con = quality_con
+    opened_here = False
+    if con is None:
+        try:
+            import duckdb as _duckdb
+            from chimpy_lake.config import LakeConfig
+            from chimpy_lake.connect import connect
+            con = connect(LakeConfig.from_env())
+            opened_here = True
+        except Exception:
+            con = _duckdb.connect()  # empty in-memory — validators will degrade cleanly
+    try:
+        run_quality_checks_from_env(
+            telemetry, con,
+            run_id=run_id, ingested_count=ingested_count,
+            manifest_path=_MANIFEST_PATH,
+        )
+    finally:
+        if opened_here:
+            con.close()
 
 
 if __name__ == "__main__":

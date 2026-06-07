@@ -26,8 +26,8 @@ wheels = [
 
 [[package]]
 name = "chimpy-lake"
-version = "0.1.0"
-source = { directory = "../chimpy-lake" }
+version = "0.1.1"
+source = { editable = "../chimpy-lake" }
 dependencies = [
     { name = "duckdb" },
     { name = "pytz" },
@@ -42,6 +42,7 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "cookiecutter", specifier = ">=2.6" },
+    { name = "hypothesis", specifier = ">=6" },
     { name = "pytest", specifier = ">=8" },
 ]
 
@@ -64,7 +65,7 @@ requires-dist = [{ name = "httpx", specifier = ">=0.28.1,<1" }]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "chimpy-lake", directory = "../chimpy-lake" },
+    { name = "chimpy-lake", editable = "../chimpy-lake" },
     { name = "pytest", specifier = ">=8" },
 ]
 
