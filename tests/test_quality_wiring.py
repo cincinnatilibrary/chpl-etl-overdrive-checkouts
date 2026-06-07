@@ -85,3 +85,36 @@ def test_run_emits_quality_validations(
         if w.target_table == "_platform.schema_audits"
     ]
     assert schema_rows, "expected at least one schema_audits row"
+
+
+def test_run_still_emits_volume_when_view_cannot_be_built(
+    monkeypatch, tmp_path, buf, quality_client
+):
+    """The silent short/empty fetch: a page with an empty `checkouts` array.
+
+    record_count is 0 and the `fetched_checkouts` view cannot be built —
+    `unnest([])` has no struct element, so `SELECT checkout.*` raises. That is
+    EXACTLY the case the volume floor exists to surface, so the volume check must
+    still fire (and FAIL on volume_min) even though the view build failed. It
+    must not be swallowed along with the view build.
+    """
+    monkeypatch.delenv("CHPL_TELEMETRY_URL", raising=False)
+    monkeypatch.delenv("CHPL_TELEMETRY_DISABLED", raising=False)
+    monkeypatch.setattr(TelemetryClient, "from_env", staticmethod(lambda: quality_client))
+
+    fixture_dir = tmp_path / "fixture"
+    fixture_dir.mkdir()
+    (fixture_dir / "page_0001.json").write_text('{"checkouts": []}')  # empty fetch
+    monkeypatch.setenv("FIXTURE_DIR", str(fixture_dir))
+    monkeypatch.setenv("OUTPUT_DIR", str(tmp_path / "out"))
+
+    rc = app.run()
+    assert rc == 0  # quality is never fatal; the extract still succeeds
+
+    vols = [
+        w.payload for w in buf.pending(limit=50)
+        if w.target_table == "_platform.validations" and w.payload["kind"] == "volume"
+    ]
+    assert len(vols) == 1, "volume must fire even when the fetched_checkouts view can't be built"
+    assert vols[0]["status"] == "fail"
+    assert vols[0]["details"]["reason"] == "below_min"

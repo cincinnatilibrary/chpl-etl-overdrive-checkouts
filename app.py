@@ -156,14 +156,29 @@ def run(args=None) -> int:
         try:
             import duckdb as _duckdb
             qcon = _duckdb.connect(":memory:")
-            qcon.execute(f"""
-                CREATE VIEW fetched_checkouts AS
-                SELECT checkout.*
-                FROM (
-                    SELECT unnest(checkouts) AS checkout
-                    FROM read_json_auto('{output_dir}/page_*.json')
+            # Build the view best-effort. A short/empty fetch (e.g. a page with an
+            # empty `checkouts` array — the silent vendor-window failure mode) cannot
+            # build it: `unnest([])` has no struct element, so `checkout.*` raises.
+            # That is precisely the case the volume floor exists to surface, so the
+            # runner is called REGARDLESS of view-build success — the volume check
+            # fires on record_count, and the table-dependent checks self-skip on the
+            # missing view (each is independently guarded inside the runner).
+            try:
+                qcon.execute(f"""
+                    CREATE VIEW fetched_checkouts AS
+                    SELECT checkout.*
+                    FROM (
+                        SELECT unnest(checkouts) AS checkout
+                        FROM read_json_auto('{output_dir}/page_*.json')
+                    )
+                """)
+            except Exception as e:
+                print(
+                    f"[quality] could not build fetched_checkouts view "
+                    f"({type(e).__name__}); volume check still runs on "
+                    f"record_count={record_count}",
+                    file=sys.stderr,
                 )
-            """)
             run_quality_checks_from_env(
                 telemetry, qcon,
                 run_id=run.run_id, ingested_count=record_count,
