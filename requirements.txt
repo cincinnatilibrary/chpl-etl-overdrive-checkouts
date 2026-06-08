@@ -1,1 +1,5 @@
 httpx>=0.28.1,<1
+# Required by the bind-mounted chimpy_lake.quality (B5a) — its runner.py imports
+# duckdb at module top level. Pinned to match chimpy-lake's pyproject (ducklake↔catalog
+# version coupling). Without this the image crashes at startup: ModuleNotFoundError: duckdb.
+duckdb>=1.5.2,<1.6
